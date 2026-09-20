@@ -1,21 +1,50 @@
-import { Client as NotionClient } from "@notionhq/client";
+import { Client as NotionClient, type PageObjectResponse } from "@notionhq/client";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { defaultDatasource } from "./schema";
+import type { Post, PostStatus, RootClientProps } from "./types";
+
+const CACHE_FILE = ".notionpress-cache.json";
+
+type CacheEntry = {
+    database_id?: string;
+    datasource_id: string;
+};
+
+function readCache(): Record<string, CacheEntry> {
+    if (!existsSync(CACHE_FILE)) {
+        return {};
+    }
+
+    try {
+        return JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
+    } catch {
+        return {};
+    }
+}
+
+function writeCacheEntry(page_id: string, entry: CacheEntry) {
+    const cache = readCache();
+    cache[page_id] = entry;
+    writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+}
 
 export class Notionpress {
     private api_key: string;
     private page_id: string;
+    private database_id: undefined | string;
     private notionClient: NotionClient;
-    private databaseId: string;
+    private dataSourceId: undefined | string;
+    private ready: Promise<void>;
 
-    constructor(params: { api_key: string, page_id: string }) {
+    constructor(params: RootClientProps) {
         this.api_key = params.api_key;
         this.page_id = params.page_id;
         this.notionClient = new NotionClient({ auth: this.api_key });
-        this.databaseId = ""
+        this.dataSourceId = params.datasource_id
 
-
-        this.initiateTable().catch((error) => {
+        this.ready = this.initiateTable().catch((error) => {
             console.error("Notionpress failed to initialize:", error)
+            throw error
         })
     }
 
@@ -23,75 +52,123 @@ export class Notionpress {
         await this.createDataSources()
     }
 
-    private async createDataSources(){
-        const database_name = "blog_database"
-        /**
-         * In order to create a data-source we need a database
-         * 
-         * 1. Create a database and bind it to the page_id
-         * 2. Create a data-source and bind it to the database
-         */
+    private async createDataSources() {
+        // Caller already told us exactly which data source to use.
+        if (this.dataSourceId) {
+            writeCacheEntry(this.page_id, { database_id: this.database_id, datasource_id: this.dataSourceId })
+            return
+        }
 
+        // We've already set this exact page up before; reuse it instead of
+        // creating a new database on it every time.
+        const cached = readCache()[this.page_id]
 
-        // 1. Check if the database exists
-        const databaseQuery = await this.notionClient.search({
-            query: database_name,
-            filter: {
-                property: "object",
-                value: "data_source"
+        if (cached) {
+            this.database_id = cached.database_id
+            this.dataSourceId = cached.datasource_id
+            return
+        }
+
+        // Brand new page: create a database on it with our schema baked in.
+        const database = await this.notionClient.databases.create({
+            parent: {
+                page_id: this.page_id,
+                type: "page_id",
+            },
+            title: [{ text: { content: "blog_database" } }],
+            initial_data_source: {
+                // @ts-expect-error - Old and New SDK and API calls collide, will fix later
+                properties: { ...defaultDatasource }
             }
         })
 
-        if (databaseQuery.results.length == 0){
-            const database = await this.notionClient.databases.create({
-                parent: { page_id: this.page_id, type: "page_id"},
-                title: [{ text: { content: database_name } }],
+        this.database_id = database.id
+
+        if ("data_sources" in database) {
+            this.dataSourceId = database.data_sources[0]?.id
+        }
+
+        if (this.dataSourceId) {
+            writeCacheEntry(this.page_id, { database_id: this.database_id, datasource_id: this.dataSourceId })
+        }
+    }
+
+    private toPost(page: PageObjectResponse): Post {
+        const properties = page.properties
+
+        const title = properties.title
+        const slug = properties.slug
+        const status = properties.status
+        const published_date = properties.published_date
+        const cover_image = properties.cover_image
+
+        const titleText = title?.type === "title"
+            ? title.title.map((item) => item.plain_text).join("")
+            : ""
+
+        const slugText = slug?.type === "rich_text"
+            ? slug.rich_text.map((item) => item.plain_text).join("")
+            : ""
+
+        const statusName = status?.type === "select"
+            ? (status.select?.name as PostStatus | undefined) ?? null
+            : null
+
+        const publishedDateValue = published_date?.type === "date"
+            ? published_date.date?.start ?? null
+            : null
+
+        const coverImageFile = cover_image?.type === "files" ? cover_image.files[0] : undefined
+        const coverImageUrl = coverImageFile
+            ? (coverImageFile.type === "file" ? coverImageFile.file.url : coverImageFile.external.url)
+            : null
+
+        return {
+            id: page.id,
+            url: page.url,
+            title: titleText,
+            slug: slugText,
+            status: statusName,
+            published_date: publishedDateValue,
+            cover_image: coverImageUrl
+        }
+    }
+
+    public async getPosts(): Promise<Post[]> {
+        await this.ready
+
+        if (!this.dataSourceId) {
+            throw new Error("Once a table/database is created you have to manually add the datasource_id to the variable initiator")
+        }
+
+        const posts: Post[] = []
+        let cursor: string | undefined = undefined
+
+        do {
+            const response = await this.notionClient.dataSources.query({
+                data_source_id: this.dataSourceId,
+                start_cursor: cursor
             })
 
-            this.databaseId = database.id
-
-            const data_source = await this.notionClient.dataSources.create({
-                parent: { database_id: database.id },
-                title: [{ text: { content: database_name } }],
-                // @ts-expect-error - Old and New SDK and API calls collide, will fix later
-                properties: { ...defaultDatasource }
-            })
-
-            // Once we create a new database, update the view to make it more user friendly
-            // From Table -> Gallery (Feed is not supported as of this current git commit date)
-
-            const feedView = await this.notionClient.views.create({
-                database_id: database.id,
-                data_source_id: data_source.id,
-                name: "Write blogs here!",
-                type: "gallery",
-                configuration: {
-                    type: "gallery",
-                    card_layout: "list",
-                    cover_size: "large"
+            for (const result of response.results) {
+                if (result.object === "page" && "properties" in result) {
+                    posts.push(this.toPost(result))
                 }
-            })
+            }
 
-            // Notion always creates a default table view when a database is created.
-            // Now that we have a dedicated view, the default one is redundant.
-            await this.deleteDefaultView(data_source.id, feedView.id)
-        }
+            cursor = response.next_cursor ?? undefined
+        } while (cursor)
 
-
+        return posts
     }
 
-    private async deleteDefaultView(data_source_id: string, keepViewId: string){
-        const { results } = await this.notionClient.views.list({
-            data_source_id
-        })
+    public async getPostContent(page_id: string): Promise<string> {
+        await this.ready
 
-        console.log(results)
+        const { markdown } = await this.notionClient.pages.retrieveMarkdown({ page_id })
 
-        const defaultViews = results.filter((view) => view.id !== keepViewId)
-
-        for (const view of defaultViews) {
-            await this.notionClient.views.delete({ view_id: view.id })
-        }
+        return markdown
     }
 
+    
 }

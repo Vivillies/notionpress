@@ -16,7 +16,7 @@
     ],
     "scripts": {
         "build": "tsc -p tsconfig.build.json",
-        "test": "bun test",
+        "test": "bun run test/client.test.ts",
         "prepublishOnly": "bun run build"
     },
     "devDependencies": {
