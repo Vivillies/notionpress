@@ -1,7 +1,7 @@
 import { Client as NotionClient, type PageObjectResponse } from "@notionhq/client";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { defaultDatasource } from "./schema";
-import type { Post, PostStatus, RootClientProps } from "./types";
+import { defaultDatasource } from "./schema.js";
+import type { Post, PostStatus, RootClientProps } from "./types.js";
 
 const CACHE_FILE = ".notionpress-cache.json";
 

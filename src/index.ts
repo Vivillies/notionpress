@@ -1,2 +1,2 @@
-export { Notionpress } from "./client";
-export type { Post, PostStatus, RootClientProps } from "./types";
+export { Notionpress } from "./client.js";
+export type { Post, PostStatus, RootClientProps } from "./types.js";
