@@ -10,6 +10,10 @@ type CacheEntry = {
     datasource_id: string;
 };
 
+/**
+ * Reads the on-disk cache file mapping page IDs to their database/data source IDs.
+ * Returns an empty object if the file doesn't exist or fails to parse.
+ */
 function readCache(): Record<string, CacheEntry> {
     if (!existsSync(CACHE_FILE)) {
         return {};
@@ -22,6 +26,9 @@ function readCache(): Record<string, CacheEntry> {
     }
 }
 
+/**
+ * Persists (or overwrites) the cache entry for a given page ID.
+ */
 function writeCacheEntry(page_id: string, entry: CacheEntry) {
     const cache = readCache();
     cache[page_id] = entry;
@@ -36,22 +43,37 @@ export class Notionpress {
     private dataSourceId: undefined | string;
     private ready: Promise<void>;
 
+    /**
+     * Creates a Notionpress client bound to a single Notion page.
+     * Kicks off async setup (finding or creating the underlying database/data source)
+     * in the background; awaited internally by any public method via `this.ready`.
+     */
     constructor(params: RootClientProps) {
         this.api_key = params.api_key;
         this.page_id = params.page_id;
         this.notionClient = new NotionClient({ auth: this.api_key });
-        this.dataSourceId = params.datasource_id
 
+        
         this.ready = this.initiateTable().catch((error) => {
             console.error("Notionpress failed to initialize:", error)
             throw error
         })
     }
 
+    /**
+     * Runs the async initialization steps required before the client is usable.
+     */
     private async initiateTable() {
         await this.createDataSources()
     }
 
+    /**
+     * Resolves `this.database_id` / `this.dataSourceId` for `this.page_id`, in priority order:
+     * 1. Use the caller-supplied `datasource_id` as-is.
+     * 2. Reuse a previously cached database/data source for this page.
+     * 3. Otherwise, create a new database on the page with the default schema.
+     * Any newly resolved IDs are written back to the cache file.
+     */
     private async createDataSources() {
         // Caller already told us exactly which data source to use.
         if (this.dataSourceId) {
@@ -93,6 +115,10 @@ export class Notionpress {
         }
     }
 
+    /**
+     * Maps a raw Notion page object (from the blog database) to our `Post` shape,
+     * pulling out title, slug, status, published date, and cover image.
+     */
     private toPost(page: PageObjectResponse): Post {
         const properties = page.properties
 
@@ -134,6 +160,13 @@ export class Notionpress {
         }
     }
 
+    /**
+     * Fetches all posts from the configured data source, paging through
+     * results until every entry has been collected.
+     *
+     * @throws if no `dataSourceId` is available (must be set manually after
+     * a table/database is created).
+     */
     public async getPosts(): Promise<Post[]> {
         await this.ready
 
