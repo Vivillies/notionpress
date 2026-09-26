@@ -1,6 +1,25 @@
 {
     "name": "notionpress",
     "version": "0.1.0",
+    "description": "Turn a Notion page into a headless CMS for your blog — typed post fetching and markdown content, no manual database setup required.",
+    "keywords": [
+        "notion",
+        "cms",
+        "headless-cms",
+        "blog",
+        "markdown",
+        "typescript"
+    ],
+    "license": "MIT",
+    "author": "Vivillies",
+    "homepage": "https://github.com/Vivillies/notionpress#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Vivillies/notionpress.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Vivillies/notionpress/issues"
+    },
     "type": "module",
     "module": "src/index.ts",
     "main": "./dist/index.js",
