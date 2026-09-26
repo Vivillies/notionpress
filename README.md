@@ -219,6 +219,8 @@ const html = marked(post.content);
 
 > `getPostContent()` returns raw markdown, so pick whichever markdown-to-HTML renderer fits your stack (`react-markdown`, `marked`, `markdown-it`, etc.) to turn it into rendered output.
 
+Full, typed-out, copy-pasteable versions of each of these live in [`examples/`](./examples).
+
 ## Default schema
 
 When `notionpress` provisions a database for you, it creates the following properties:
