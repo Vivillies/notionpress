@@ -12,14 +12,15 @@ type CacheEntry = {
 
 /**
  * Reads the on-disk cache file mapping page IDs to their database/data source IDs.
- * Returns an empty object if the file doesn't exist or fails to parse.
+ * Best-effort: returns an empty object if the file doesn't exist, fails to parse,
+ * or the filesystem isn't usable at all (e.g. Cloudflare Workers).
  */
 function readCache(): Record<string, CacheEntry> {
-    if (!existsSync(CACHE_FILE)) {
-        return {};
-    }
-
     try {
+        if (!existsSync(CACHE_FILE)) {
+            return {};
+        }
+
         return JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
     } catch {
         return {};
@@ -28,11 +29,17 @@ function readCache(): Record<string, CacheEntry> {
 
 /**
  * Persists (or overwrites) the cache entry for a given page ID.
+ * Best-effort: silently no-ops if the filesystem isn't writable/available,
+ * since callers that already have a datasource_id don't depend on this succeeding.
  */
 function writeCacheEntry(page_id: string, entry: CacheEntry) {
-    const cache = readCache();
-    cache[page_id] = entry;
-    writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+    try {
+        const cache = readCache();
+        cache[page_id] = entry;
+        writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+    } catch {
+        // No persistent filesystem in this runtime - nothing we can do.
+    }
 }
 
 export class Notionpress {
@@ -51,9 +58,10 @@ export class Notionpress {
     constructor(params: RootClientProps) {
         this.api_key = params.api_key;
         this.page_id = params.page_id;
+        this.dataSourceId = params.datasource_id;
         this.notionClient = new NotionClient({ auth: this.api_key });
 
-        
+
         this.ready = this.initiateTable().catch((error) => {
             console.error("Notionpress failed to initialize:", error)
             throw error
@@ -75,9 +83,8 @@ export class Notionpress {
      * Any newly resolved IDs are written back to the cache file.
      */
     private async createDataSources() {
-        // Caller already told us exactly which data source to use.
+        // Caller already told us exactly which data source to use - nothing to resolve or cache.
         if (this.dataSourceId) {
-            writeCacheEntry(this.page_id, { database_id: this.database_id, datasource_id: this.dataSourceId })
             return
         }
 

@@ -54,6 +54,14 @@ if (posts[0]) {
 
 On first run, `notionpress` creates a new database titled **"blog_database"** on the given page and caches its IDs in `.notionpress-cache.json` (add this to your `.gitignore`) so subsequent runs reuse the same database instead of creating a new one.
 
+
+## Writing Blogs 
+Due to Notion not having the needed capabilities to transform the database directly into a Feed, or the ability to turn any database into a Feed you need to do so manually.
+
+Left click on **Default View** => **Edit view** => **Layout** => **Feed**
+
+Once this is done you can create a new post, fill in the required fields and at the bottom of everything you can start typing your blog post
+
 ## Environment variables
 
 Create a `.env` file (see `.env.example`):
