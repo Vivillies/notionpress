@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.1.0] - 2026-10-16
+## [0.1.2] - 2026-10-17
+
+### Fixed
+
+- **`BrowserTokenNotAllowedError` thrown on Cloudflare Workers (and similar edge runtimes).** `@notionhq/client` added a browser-detection guard that can false-positive on worker-style global scopes. `notionpress` is a server-only library by design — its API key is never meant to reach a browser bundle — so the inner client is now constructed with `dangerouslyAllowBrowser: true` instead of making every consumer discover and work around this per runtime.
+
+### Changed
+
+- Bumped the `@notionhq/client` dependency floor to `^5.27.0`, the version that introduced the `dangerouslyAllowBrowser` option.
+
+## [0.1.1] - 2026-10-16
 
 ### Fixed
 

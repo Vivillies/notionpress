@@ -59,7 +59,11 @@ export class Notionpress {
         this.api_key = params.api_key;
         this.page_id = params.page_id;
         this.dataSourceId = params.datasource_id;
-        this.notionClient = new NotionClient({ auth: this.api_key });
+        // notionpress is a server-only library - the API key is never meant to reach a
+        // browser bundle. @notionhq/client's browser heuristic can still false-positive
+        // on edge runtimes (e.g. Cloudflare Workers), so opt out of that check here
+        // rather than making every consumer pass this through themselves.
+        this.notionClient = new NotionClient({ auth: this.api_key, dangerouslyAllowBrowser: true });
 
 
         this.ready = this.initiateTable().catch((error) => {
